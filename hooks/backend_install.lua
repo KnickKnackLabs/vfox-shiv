@@ -1,0 +1,132 @@
+--- Installs a shiv package by delegating to shiv's install task.
+--- Bootstraps shiv if not already present.
+--- @param ctx BackendInstallCtx
+--- @return BackendInstallResult
+function PLUGIN:BackendInstall(ctx)
+    local cmd = require("cmd")
+    local tool = ctx.tool
+    local version = ctx.version
+    local install_path = ctx.install_path
+
+    if not tool or tool == "" then
+        error("Tool name cannot be empty")
+    end
+    if not version or version == "" then
+        error("Version cannot be empty")
+    end
+    if not install_path or install_path == "" then
+        error("Install path cannot be empty")
+    end
+
+    -- Ensure shiv is bootstrapped
+    local shiv_path = ensure_shiv()
+
+    -- Build the version/ref specifier for shiv install.
+    -- "latest" means no ref (track default branch).
+    -- Otherwise, mise strips 'v' prefixes from versions, so we add it back
+    -- since shiv tags use the 'v' prefix.
+    local tool_spec = tool
+    if version ~= "latest" then
+        local ref = version
+        if not version:match("^v") then
+            ref = "v" .. version
+        end
+        tool_spec = tool .. "@" .. ref
+    end
+
+    -- Create isolated shiv environment pointing at mise's install_path
+    local shiv_env = {
+        SHIV_PACKAGES_DIR = install_path .. "/packages",
+        SHIV_BIN_DIR = install_path .. "/bin",
+        SHIV_CONFIG_DIR = install_path .. "/config",
+        SHIV_CACHE_DIR = install_path .. "/cache",
+    }
+
+    -- Build env string for the command
+    local env_prefix = ""
+    for k, v in pairs(shiv_env) do
+        env_prefix = env_prefix .. k .. "='" .. v .. "' "
+    end
+
+    -- Delegate to shiv install via mise run
+    local mise_bin = find_mise()
+    local install_cmd = env_prefix .. mise_bin .. " -C '" .. shiv_path .. "' run -q install " .. tool_spec
+
+    local ok, result = pcall(cmd.exec, install_cmd)
+    if not ok then
+        error("shiv install failed for " .. tool_spec .. ": " .. tostring(result))
+    end
+
+    return {}
+end
+
+--- Ensure the plugin's shiv clone exists and is at the pinned ref.
+--- Bootstraps via git clone if not present.
+--- @return string Path to the shiv clone
+function ensure_shiv()
+    local cmd = require("cmd")
+    local file = require("file")
+
+    local shiv_path = get_shiv_path()
+
+    -- Pin to a specific shiv version for reproducibility
+    local shiv_ref = os.getenv("VFOX_SHIV_REF") or "v0.1.0"
+    local shiv_repo = os.getenv("VFOX_SHIV_REPO") or "https://github.com/KnickKnackLabs/shiv.git"
+
+    if file.exists(shiv_path .. "/.git/HEAD") then
+        -- Already cloned — verify ref if pinned
+        -- (For now, trust what's there. Version pinning enforcement can come later.)
+        return shiv_path
+    end
+
+    -- Bootstrap: clone shiv at the pinned ref
+    cmd.exec("mkdir -p '" .. shiv_path .. "'")
+
+    -- Clone with the specific ref
+    local clone_cmd = "git clone --quiet --branch " .. shiv_ref .. " --depth 1 --single-branch "
+        .. shiv_repo .. " '" .. shiv_path .. "'"
+
+    local ok, result = pcall(cmd.exec, clone_cmd)
+    if not ok then
+        error("Failed to bootstrap shiv: " .. tostring(result))
+    end
+
+    -- Trust the mise config so shiv's tasks can run
+    local mise_bin = find_mise()
+    pcall(cmd.exec, mise_bin .. " trust -q -C '" .. shiv_path .. "'")
+
+    -- Install shiv's own dependencies (bats, gum, etc.)
+    pcall(cmd.exec, mise_bin .. " install -q -C '" .. shiv_path .. "'")
+
+    return shiv_path
+end
+
+--- Find the mise binary.
+--- @return string
+function find_mise()
+    local cmd = require("cmd")
+    local ok, path = pcall(cmd.exec, "command -v mise")
+    if ok and path and path ~= "" then
+        return path:gsub("%s+$", "")
+    end
+    -- Fall back to common locations
+    local home = os.getenv("HOME") or ""
+    local candidates = {
+        home .. "/.local/bin/mise",
+        "/usr/local/bin/mise",
+        "/usr/bin/mise",
+    }
+    for _, p in ipairs(candidates) do
+        local file = require("file")
+        if file.exists(p) then return p end
+    end
+    error("mise not found on PATH or in common locations")
+end
+
+--- Get the path to the plugin's shiv clone.
+--- @return string
+function get_shiv_path()
+    local home = os.getenv("HOME") or ""
+    return os.getenv("VFOX_SHIV_PATH")
+        or (home .. "/.local/share/mise/shiv-backend/shiv")
+end
