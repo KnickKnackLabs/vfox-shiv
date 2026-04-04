@@ -44,16 +44,25 @@ function PLUGIN:BackendListVersions(ctx)
     return { versions = versions }
 end
 
---- Resolve a tool name to a GitHub repo slug by searching shiv source files.
---- Checks user's sources dir (~/.config/shiv/sources/) first,
---- then falls back to the plugin's bundled shiv sources.json.
+--- Resolve a tool name to a GitHub repo slug.
+--- Resolution order:
+---   1. Cached remote sources.json (TTL-based)
+---   2. Fresh fetch from GitHub (on cache miss/stale, with timeout)
+---   3. User's shiv sources dir (~/.config/shiv/sources/)
+---   4. Plugin's bundled shiv sources.json
 --- @param tool string
 --- @return string|nil
 function resolve_repo(tool)
-    local json = require("json")
     local cmd = require("cmd")
 
-    -- Check user's shiv sources directory
+    -- 1. Check cached remote sources (fetches if stale)
+    local cached = get_cached_remote_sources()
+    if cached then
+        local repo = lookup_in_table(cached, tool)
+        if repo then return repo end
+    end
+
+    -- 2. Check user's shiv sources directory
     local sources_dir = os.getenv("SHIV_SOURCES_DIR")
         or os.getenv("XDG_CONFIG_HOME") and (os.getenv("XDG_CONFIG_HOME") .. "/shiv/sources")
         or (os.getenv("HOME") .. "/.config/shiv/sources")
@@ -66,12 +75,66 @@ function resolve_repo(tool)
         end
     end
 
-    -- Fall back to the plugin's bootstrapped shiv clone
+    -- 3. Fall back to the plugin's bootstrapped shiv clone
     local shiv_path = get_shiv_path()
     local bundled = shiv_path .. "/sources.json"
     local repo = lookup_in_source(bundled, tool)
     if repo then return repo end
 
+    return nil
+end
+
+--- Get cached remote sources, fetching if stale or missing.
+--- Returns a parsed table on success, nil on failure.
+--- @return table|nil
+function get_cached_remote_sources()
+    local file = require("file")
+    local json = require("json")
+    local cmd = require("cmd")
+
+    local cache_path = get_cache_path()
+    local ttl_seconds = tonumber(os.getenv("VFOX_SHIV_CACHE_TTL")) or 300
+
+    -- Check if cache exists and is fresh
+    if file.exists(cache_path) then
+        local age = get_file_age(cache_path)
+        if age and age < ttl_seconds then
+            local ok, data = pcall(file.read, cache_path)
+            if ok and data and data ~= "" then
+                local parse_ok, parsed = pcall(json.decode, data)
+                if parse_ok and parsed then
+                    return parsed
+                end
+            end
+        end
+    end
+
+    -- Cache is stale or missing — fetch from GitHub
+    -- NOTE: http.get cannot be wrapped in pcall due to mise's Lua coroutine sandbox
+    -- ("attempt to yield across metamethod/C-call boundary"). Use curl instead.
+    local sources_url = get_sources_url()
+    local ok, body = pcall(cmd.exec, "curl -sf --max-time 3 '" .. sources_url .. "'")
+
+    if ok and body and body ~= "" then
+        local parse_ok, parsed = pcall(json.decode, body)
+        if parse_ok and parsed then
+            write_cache(cache_path, sources_url)
+            return parsed
+        end
+    end
+
+    return nil
+end
+
+--- Look up a tool name in a parsed sources table.
+--- @param sources table
+--- @param tool string
+--- @return string|nil
+function lookup_in_table(sources, tool)
+    local repo = sources[tool]
+    if repo and repo ~= "" then
+        return repo
+    end
     return nil
 end
 
@@ -83,9 +146,60 @@ function lookup_in_source(file_path, tool)
     local cmd = require("cmd")
     local ok, result = pcall(cmd.exec, "jq -r --arg n '" .. tool .. "' '.[$n] // empty' '" .. file_path .. "' 2>/dev/null")
     if ok and result and result ~= "" then
-        return result:gsub("%s+$", "")
+        local cleaned = result:gsub("%s+$", "")
+        return cleaned
     end
     return nil
+end
+
+--- Get the age of a file in seconds.
+--- @param path string
+--- @return number|nil
+function get_file_age(path)
+    local cmd = require("cmd")
+    -- stat -f %m gives mtime as epoch seconds on macOS
+    -- stat -c %Y gives mtime as epoch seconds on Linux
+    local stat_cmd = RUNTIME.osType == "darwin"
+        and "stat -f %m '" .. path .. "'"
+        or "stat -c %Y '" .. path .. "'"
+    local ok, mtime_str = pcall(cmd.exec, stat_cmd)
+    if ok and mtime_str then
+        local cleaned = mtime_str:gsub("%s+$", "")
+        local mtime = tonumber(cleaned)
+        if mtime then
+            return os.time() - mtime
+        end
+    end
+    return nil
+end
+
+--- Get the cache file path for remote sources.
+--- @return string
+function get_cache_path()
+    local home = os.getenv("HOME") or ""
+    local cache_dir = os.getenv("XDG_CACHE_HOME")
+        or (home .. "/.cache")
+    return cache_dir .. "/mise/shiv-backend/sources.json"
+end
+
+--- Write remote sources to the cache file.
+--- Re-downloads from the URL to avoid shell escaping issues with content.
+--- @param path string
+--- @param url string The URL to download from
+function write_cache(path, url)
+    local cmd = require("cmd")
+    local dir = path:match("(.+)/[^/]+$")
+    if dir then
+        pcall(cmd.exec, "mkdir -p '" .. dir .. "'")
+    end
+    pcall(cmd.exec, "curl -sf --max-time 3 -o '" .. path .. "' '" .. url .. "'")
+end
+
+--- Get the remote sources URL.
+--- @return string
+function get_sources_url()
+    return os.getenv("VFOX_SHIV_SOURCES_URL")
+        or "https://raw.githubusercontent.com/KnickKnackLabs/shiv/main/sources.json"
 end
 
 --- Get the path to the plugin's shiv clone.
