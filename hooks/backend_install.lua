@@ -97,40 +97,55 @@ function ensure_shiv()
     end
 
     -- Bootstrap: clone shiv at the pinned ref.
-    -- Use a lock directory to prevent parallel installs from racing.
+    -- Multiple shiv:* tools may try to bootstrap simultaneously via
+    -- parallel mise install. Use mkdir as an atomic lock.
     local lock_path = shiv_path .. ".lock"
-    local got_lock = pcall(cmd.exec, "mkdir '" .. lock_path .. "' 2>/dev/null")
+    local parent_dir = shiv_path:match("(.+)/[^/]+$")
+    if parent_dir then
+        pcall(cmd.exec, "mkdir -p '" .. parent_dir .. "'")
+    end
 
-    if not got_lock then
-        -- Another install is bootstrapping — wait for it to finish
-        for i = 1, 30 do
-            if file.exists(shiv_path .. "/.git/HEAD") then
-                return shiv_path
-            end
-            pcall(cmd.exec, "sleep 1")
-        end
-        -- If still not ready after 30s, try to proceed anyway
+    -- Spin until we acquire the lock or shiv appears
+    local got_lock = false
+    for attempt = 1, 60 do
+        -- Check if another installer already finished
         if file.exists(shiv_path .. "/.git/HEAD") then
             return shiv_path
         end
-        error("Timed out waiting for another shiv bootstrap to complete")
+        -- Try to acquire lock (mkdir is atomic on POSIX)
+        local ok = pcall(cmd.exec, "mkdir '" .. lock_path .. "' 2>/dev/null")
+        if ok then
+            got_lock = true
+            break
+        end
+        -- Lock held by another installer — wait and retry
+        pcall(cmd.exec, "sleep 1")
     end
 
-    -- We hold the lock — re-check in case someone finished before us
+    if not got_lock then
+        -- Final check before giving up
+        if file.exists(shiv_path .. "/.git/HEAD") then
+            return shiv_path
+        end
+        error("Timed out waiting for shiv bootstrap lock")
+    end
+
+    -- We hold the lock. Re-check in case someone finished just before us.
     if file.exists(shiv_path .. "/.git/HEAD") then
         pcall(cmd.exec, "rmdir '" .. lock_path .. "'")
         return shiv_path
     end
 
-    cmd.exec("mkdir -p '" .. shiv_path .. "'")
-
-    -- Clone with the specific ref
+    -- Clone shiv
     local clone_cmd = "git clone --quiet --branch " .. shiv_ref .. " --depth 1 --single-branch "
         .. shiv_repo .. " '" .. shiv_path .. "'"
 
     local ok, result = pcall(cmd.exec, clone_cmd)
+    -- Release lock regardless of outcome
     pcall(cmd.exec, "rmdir '" .. lock_path .. "'")
     if not ok then
+        -- Clean up partial clone
+        pcall(cmd.exec, "rm -rf '" .. shiv_path .. "'")
         error("Failed to bootstrap shiv: " .. tostring(result))
     end
 
