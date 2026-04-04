@@ -96,7 +96,32 @@ function ensure_shiv()
         return shiv_path
     end
 
-    -- Bootstrap: clone shiv at the pinned ref
+    -- Bootstrap: clone shiv at the pinned ref.
+    -- Use a lock directory to prevent parallel installs from racing.
+    local lock_path = shiv_path .. ".lock"
+    local got_lock = pcall(cmd.exec, "mkdir '" .. lock_path .. "' 2>/dev/null")
+
+    if not got_lock then
+        -- Another install is bootstrapping — wait for it to finish
+        for i = 1, 30 do
+            if file.exists(shiv_path .. "/.git/HEAD") then
+                return shiv_path
+            end
+            pcall(cmd.exec, "sleep 1")
+        end
+        -- If still not ready after 30s, try to proceed anyway
+        if file.exists(shiv_path .. "/.git/HEAD") then
+            return shiv_path
+        end
+        error("Timed out waiting for another shiv bootstrap to complete")
+    end
+
+    -- We hold the lock — re-check in case someone finished before us
+    if file.exists(shiv_path .. "/.git/HEAD") then
+        pcall(cmd.exec, "rmdir '" .. lock_path .. "'")
+        return shiv_path
+    end
+
     cmd.exec("mkdir -p '" .. shiv_path .. "'")
 
     -- Clone with the specific ref
@@ -104,6 +129,7 @@ function ensure_shiv()
         .. shiv_repo .. " '" .. shiv_path .. "'"
 
     local ok, result = pcall(cmd.exec, clone_cmd)
+    pcall(cmd.exec, "rmdir '" .. lock_path .. "'")
     if not ok then
         error("Failed to bootstrap shiv: " .. tostring(result))
     end
