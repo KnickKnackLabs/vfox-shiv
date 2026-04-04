@@ -48,6 +48,9 @@ function PLUGIN:BackendInstall(ctx)
         env_prefix = env_prefix .. k .. "='" .. v .. "' "
     end
 
+    -- Sync remote sources.json into bundled shiv so it knows about new packages
+    sync_bundled_sources(shiv_path)
+
     -- Delegate to shiv install via mise run
     local mise_bin = find_mise()
     local install_cmd = env_prefix .. mise_bin .. " -C '" .. shiv_path .. "' run -q install " .. tool_spec
@@ -58,6 +61,20 @@ function PLUGIN:BackendInstall(ctx)
     end
 
     return {}
+end
+
+--- Sync the bundled shiv's sources.json with the remote version.
+--- Uses the same cached remote sources as backend_list_versions.
+--- Falls back silently if fetch fails (bundled sources still work).
+function sync_bundled_sources(shiv_path)
+    local cmd = require("cmd")
+    local file = require("file")
+
+    local sources_url = os.getenv("VFOX_SHIV_SOURCES_URL")
+        or "https://raw.githubusercontent.com/KnickKnackLabs/shiv/main/sources.json"
+    local target = shiv_path .. "/sources.json"
+
+    pcall(cmd.exec, "curl -sf --max-time 3 -o '" .. target .. "' '" .. sources_url .. "'")
 end
 
 --- Ensure the plugin's shiv clone exists and is at the pinned ref.
