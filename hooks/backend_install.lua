@@ -188,7 +188,7 @@ end
 --- own config.
 --- @return string
 function clean_mise_env()
-    return "MISE_OVERRIDE_CONFIG_FILENAMES='' "
+    return "env -u MISE_OVERRIDE_CONFIG_FILENAMES "
 end
 
 --- Get the path to the plugin's shiv clone.
