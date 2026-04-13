@@ -53,7 +53,7 @@ function PLUGIN:BackendInstall(ctx)
 
     -- Delegate to shiv install via mise run
     local mise_bin = find_mise()
-    local install_cmd = env_prefix .. mise_bin .. " -C '" .. shiv_path .. "' run -q install " .. tool_spec
+    local install_cmd = env_prefix .. clean_mise_env() .. mise_bin .. " -C '" .. shiv_path .. "' run -q install " .. tool_spec
 
     local ok, result = pcall(cmd.exec, install_cmd)
     if not ok then
@@ -151,10 +151,10 @@ function ensure_shiv()
 
     -- Trust the mise config so shiv's tasks can run
     local mise_bin = find_mise()
-    pcall(cmd.exec, mise_bin .. " trust -q -C '" .. shiv_path .. "'")
+    pcall(cmd.exec, clean_mise_env() .. mise_bin .. " trust -q -C '" .. shiv_path .. "'")
 
     -- Install shiv's own dependencies (bats, gum, etc.)
-    pcall(cmd.exec, mise_bin .. " install -q -C '" .. shiv_path .. "'")
+    pcall(cmd.exec, clean_mise_env() .. mise_bin .. " install -q -C '" .. shiv_path .. "'")
 
     return shiv_path
 end
@@ -179,6 +179,16 @@ function find_mise()
         if file.exists(p) then return p end
     end
     error("mise not found on PATH or in common locations")
+end
+
+--- Build an env prefix that clears mise vars which break nested calls.
+--- When the parent mise sets MISE_OVERRIDE_CONFIG_FILENAMES (e.g., to
+--- "mise.ci.toml"), child mise processes inherit it and ignore the
+--- target repo's mise.toml. Clearing it lets nested calls read their
+--- own config.
+--- @return string
+function clean_mise_env()
+    return "MISE_OVERRIDE_CONFIG_FILENAMES='' "
 end
 
 --- Get the path to the plugin's shiv clone.
