@@ -14,7 +14,7 @@ setup() {
 
 @test "bootstrapped shiv is pinned to expected ref" {
   local shiv_path="${VFOX_SHIV_PATH:-$HOME/.local/share/mise/shiv-backend/shiv}"
-  local expected_ref="${VFOX_SHIV_REF:-v0.1.0}"
+  local expected_ref="${VFOX_SHIV_REF:-v0.2.1}"
 
   run git -C "$shiv_path" describe --tags --exact-match HEAD
   [ "$status" -eq 0 ]
