@@ -87,7 +87,7 @@ function ensure_shiv()
     local shiv_path = get_shiv_path()
 
     -- Pin to a specific shiv version for reproducibility
-    local shiv_ref = os.getenv("VFOX_SHIV_REF") or "v0.2.1"
+    local shiv_ref = os.getenv("VFOX_SHIV_REF") or "v0.2.2"
     local shiv_repo = os.getenv("VFOX_SHIV_REPO") or "https://github.com/KnickKnackLabs/shiv.git"
 
     if file.exists(shiv_path .. "/.git/HEAD") then
