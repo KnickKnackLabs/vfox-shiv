@@ -57,24 +57,7 @@ function PLUGIN:BackendInstall(ctx)
 
     local ok, result = pcall(cmd.exec, install_cmd)
     if not ok then
-        -- Strip terminal escape codes and gum artifacts for readable output
-        local clean = tostring(result)
-            :gsub("\27%[[%d;]*[A-Za-z]", "")  -- ANSI escape sequences
-            :gsub("\27%[%?%d+[hl]", "")        -- terminal mode sequences
-            :gsub("%[D%[2K", "")               -- gum cursor control
-            :gsub("\r", "")                     -- carriage returns
-        -- Remove known mise boilerplate lines
-        clean = clean:gsub('[^\n]*Run with %-%-verbose[^\n]*', '')
-        clean = clean:gsub('[^\n]*MISE_VERBOSE[^\n]*', '')
-        clean = clean:gsub('[^\n]*stack traceback[^\n]*', '')
-        clean = clean:gsub('[^\n]*in function[^\n]*', '')
-        clean = clean:gsub('[^\n]*tail calls[^\n]*', '')
-        clean = clean:gsub('[^\n]*%[C%]: in %?[^\n]*', '')
-        -- Collapse blank lines, trim
-        clean = clean:gsub('\n+', '\n'):gsub('^%s+', ''):gsub('%s+$', '')
-        -- Use cleaned output if non-empty, otherwise fall back to raw
-        local msg = (#clean > 0) and clean or tostring(result)
-        error("shiv install failed for " .. tool_spec .. ": " .. msg)
+        error("shiv install failed for " .. tool_spec .. ": " .. Errors.clean_error(tostring(result)))
     end
 
     return {}
