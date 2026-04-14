@@ -65,3 +65,14 @@ setup() {
   install_path=$(mise where shiv:readme@latest 2>/dev/null)
   [ -x "$install_path/bin/readme" ]
 }
+
+@test "install nonexistent package shows clean error" {
+  setup_mise_project '"shiv:nonexistent-pkg-xyzzy" = "0.1.0"'
+
+  run mise install
+  [ "$status" -ne 0 ]
+  # Error should mention the package name and be readable (no raw escape codes)
+  echo "$output" | grep -qi "shiv install failed\|not found"
+  # Should not contain raw ANSI escape sequences
+  ! echo "$output" | grep -qP '\x1b\['
+}
