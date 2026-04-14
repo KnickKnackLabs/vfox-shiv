@@ -3,11 +3,10 @@
 setup() {
   load helpers
   install_plugin
+  ensure_bootstrap
 }
 
 @test "shiv bootstrap creates clone at expected path" {
-  # The bootstrap should have happened during earlier install tests.
-  # Verify the shiv clone exists.
   local shiv_path="${VFOX_SHIV_PATH:-$HOME/.local/share/mise/shiv-backend/shiv}"
   [ -d "$shiv_path/.git" ]
 }

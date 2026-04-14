@@ -40,7 +40,10 @@ EOF
 }
 
 teardown() {
-  [[ -n "${MOCK_PID:-}" ]] && kill "$MOCK_PID" 2>/dev/null || true
+  if [[ -n "${MOCK_PID:-}" ]]; then
+    kill "$MOCK_PID" 2>/dev/null
+    wait "$MOCK_PID" 2>/dev/null || true
+  fi
 }
 
 # ── Remote fetch ──────────────────────────────────────────────
@@ -76,7 +79,7 @@ teardown() {
   mise ls-remote shiv:shimmer 2>/dev/null
 
   # Kill the server
-  kill "$MOCK_PID" 2>/dev/null; MOCK_PID=""
+  kill "$MOCK_PID" 2>/dev/null; wait "$MOCK_PID" 2>/dev/null || true; MOCK_PID=""
   sleep 0.3
 
   # Should still resolve remote-only-pkg from cache

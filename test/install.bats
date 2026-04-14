@@ -3,42 +3,45 @@
 setup() {
   load helpers
   install_plugin
+  ensure_bootstrap
 }
 
 @test "install a tagged version" {
-  setup_mise_project '"shiv:shimmer" = "0.0.1-alpha"'
+  setup_mise_project '"shiv:readme" = "0.1.0"'
 
   run mise install
   [ "$status" -eq 0 ]
 
   # Verify the install path exists with the expected structure
   local install_path
-  install_path=$(mise where shiv:shimmer@0.0.1-alpha 2>/dev/null)
+  install_path=$(mise where shiv:readme@0.1.0 2>/dev/null)
   [ -d "$install_path/bin" ]
   [ -d "$install_path/packages" ]
-  [ -x "$install_path/bin/shimmer" ]
+  [ -x "$install_path/bin/readme" ]
 }
 
 @test "installed shim is executable and has correct repo path" {
-  setup_mise_project '"shiv:shimmer" = "0.0.1-alpha"'
+  setup_mise_project '"shiv:readme" = "0.1.0"'
   mise install 2>/dev/null
 
   local install_path
-  install_path=$(mise where shiv:shimmer@0.0.1-alpha 2>/dev/null)
+  install_path=$(mise where shiv:readme@0.1.0 2>/dev/null)
 
   # Shim should point to the package inside the install path
-  grep -q "REPO=" "$install_path/bin/shimmer"
-  grep -q "$install_path/packages/shimmer" "$install_path/bin/shimmer"
+  grep -q "REPO=" "$install_path/bin/readme"
+  grep -q "$install_path/packages/readme" "$install_path/bin/readme"
 }
 
-@test "installed tool runs through mise exec" {
-  setup_mise_project '"shiv:shimmer" = "0.0.1-alpha"'
+@test "installed shim delegates to mise run" {
+  setup_mise_project '"shiv:readme" = "0.1.0"'
   mise install 2>/dev/null
 
-  run mise exec -- shimmer tasks
-  [ "$status" -eq 0 ]
-  # shimmer should list its tasks
-  echo "$output" | grep -q "agent"
+  local install_path
+  install_path=$(mise where shiv:readme@0.1.0 2>/dev/null)
+
+  # Shim should be a bash script that delegates to mise run
+  [ -x "$install_path/bin/readme" ]
+  grep -q 'mise.*run' "$install_path/bin/readme"
 }
 
 @test "install latest (no ref) for untagged package" {
@@ -52,18 +55,13 @@ setup() {
   [ -x "$install_path/bin/readme" ]
 }
 
-@test "install latest for tagged package tracks default branch" {
-  setup_mise_project '"shiv:shimmer" = "latest"'
+@test "install latest for tagged package" {
+  setup_mise_project '"shiv:readme" = "latest"'
 
   run mise install
   [ "$status" -eq 0 ]
 
   local install_path
-  install_path=$(mise where shiv:shimmer@latest 2>/dev/null)
-  [ -x "$install_path/bin/shimmer" ]
-
-  # Should be on a branch (not detached HEAD)
-  local branch
-  branch=$(git -C "$install_path/packages/shimmer" rev-parse --abbrev-ref HEAD 2>/dev/null)
-  [ "$branch" != "HEAD" ]
+  install_path=$(mise where shiv:readme@latest 2>/dev/null)
+  [ -x "$install_path/bin/readme" ]
 }

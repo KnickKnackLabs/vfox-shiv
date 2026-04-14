@@ -18,9 +18,17 @@ function PLUGIN:BackendListVersions(ctx)
         error("Package '" .. tool .. "' not found in any shiv source file")
     end
 
-    -- List tags via gh CLI (handles auth for private repos)
+    -- List tags via GitHub API using curl.
+    -- curl is always available; gh may not be on PATH inside mise's Lua sandbox.
+    -- Pass GITHUB_TOKEN for auth if available (avoids rate limits in CI).
     local versions = {}
-    local ok, output = pcall(cmd.exec, "gh api repos/" .. repo .. "/tags --jq '.[].name' 2>/dev/null")
+    local auth_header = ""
+    local gh_token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN") or ""
+    if gh_token ~= "" then
+        auth_header = "-H 'Authorization: token " .. gh_token .. "' "
+    end
+    local ok, output = pcall(cmd.exec,
+        "curl -sf " .. auth_header .. "https://api.github.com/repos/" .. repo .. "/tags | jq -r '.[].name' 2>/dev/null")
     if ok and output and output ~= "" then
         -- Parse tags into version list
         local tags = {}
