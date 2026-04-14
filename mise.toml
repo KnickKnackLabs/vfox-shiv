@@ -7,3 +7,4 @@ experimental = true
 bats = "1.13.0"
 usage = "1"
 jq = "latest"
+lua = "5.4"

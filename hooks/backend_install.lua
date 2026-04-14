@@ -57,7 +57,7 @@ function PLUGIN:BackendInstall(ctx)
 
     local ok, result = pcall(cmd.exec, install_cmd)
     if not ok then
-        error("shiv install failed for " .. tool_spec .. ": " .. tostring(result))
+        error("shiv install failed for " .. tool_spec .. ": " .. Errors.clean_error(tostring(result)))
     end
 
     return {}
