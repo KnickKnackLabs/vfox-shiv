@@ -57,7 +57,16 @@ function PLUGIN:BackendInstall(ctx)
 
     local ok, result = pcall(cmd.exec, install_cmd)
     if not ok then
-        error("shiv install failed for " .. tool_spec .. ": " .. tostring(result))
+        -- Strip terminal escape codes and gum artifacts for readable output
+        local clean = tostring(result)
+            :gsub("\27%[[%d;]*[A-Za-z]", "")  -- ANSI escape sequences
+            :gsub("\27%[%?%d+[hl]", "")        -- terminal mode sequences
+            :gsub("%[D%[2K", "")               -- gum cursor control
+            :gsub("\r", "")                     -- carriage returns
+        -- Extract the meaningful error line
+        local msg = clean:match("([^\n]*error[^\n]*)") or clean:match("([^\n]*fail[^\n]*)") or clean
+        msg = msg:gsub("^%s+", ""):gsub("%s+$", "")
+        error("shiv install failed for " .. tool_spec .. ": " .. msg)
     end
 
     return {}
