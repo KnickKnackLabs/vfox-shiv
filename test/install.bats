@@ -74,5 +74,5 @@ setup() {
   # Error should mention the package name and be readable (no raw escape codes)
   echo "$output" | grep -qi "shiv install failed\|not found"
   # Should not contain raw ANSI escape sequences
-  ! echo "$output" | grep -qP '\x1b\['
+  [[ "$output" != *$'\x1b['* ]]
 }
