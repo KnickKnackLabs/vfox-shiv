@@ -1,3 +1,8 @@
+-- Shared libs: mise's vfox implementation adds the plugin's lib/?.lua to
+-- package.path, so require("name") loads lib/name.lua. See
+-- jdx/mise crates/vfox/src/plugin.rs (set_paths).
+local Paths = require("path")
+
 --- Lists available versions (git tags) for a shiv package.
 --- Resolves tool name to a GitHub repo via shiv's source files,
 --- then queries the GitHub API for tags.
@@ -211,9 +216,8 @@ function get_sources_url()
 end
 
 --- Get the path to the plugin's shiv clone.
+--- Delegates to lib/path.lua.
 --- @return string
 function get_shiv_path()
-    local home = os.getenv("HOME") or ""
-    return os.getenv("VFOX_SHIV_PATH")
-        or (home .. "/.local/share/mise/shiv-backend/shiv")
+    return Paths.get_shiv_path()
 end
