@@ -210,6 +210,60 @@ run_lock_lua() {
 # full acquire → reclaim → re-acquire round-trip
 # ------------------------------------------------------------------
 
+@test "try_acquire rolls back mkdir if PID write fails" {
+  # Regression for the acquired-but-no-PID race (self-review of #8):
+  # if the PID write fails after a successful mkdir, a naive try_acquire
+  # returns "acquired" with a pid-less lock on disk. A concurrent caller
+  # then sees is_stale() == true, reclaims, and races into a duplicate
+  # clone. Fix: detect the write failure, roll back the mkdir, report
+  # "held_alive" so the caller sleeps and retries.
+  #
+  # Force the failure by making the lock path's parent read-only so that
+  # `echo $PPID > $lock/pid` fails with EACCES even though `mkdir $lock`
+  # succeeded.
+  local lock="$BATS_TEST_TMPDIR/shiv-write-fail.lock"
+
+  "$LUA_BIN" -e "
+    local cmd_stub = {}
+    function cmd_stub.exec(command)
+        -- Make only the PID-write command fail.
+        if command:find('echo %\$PPID') then
+            error('Command failed with status 1: simulated write failure')
+        end
+        local handle = io.popen(command .. '; echo __EXIT__\$?', 'r')
+        local out = handle:read('*a'); handle:close()
+        local body, code = out:match('^(.-)__EXIT__(%d+)%s*\$')
+        code = tonumber(code) or 0
+        if code ~= 0 then
+            error('Command failed with status ' .. code .. ': ' .. body)
+        end
+        return body
+    end
+    package.loaded['cmd'] = cmd_stub
+    local file_stub = {}
+    function file_stub.exists(path)
+        local f = io.open(path, 'r')
+        if f then f:close(); return true end
+        local h = io.popen('[ -e \"' .. path .. '\" ] && echo y || echo n')
+        local r = h:read('*a'); h:close()
+        return r:match('^y') ~= nil
+    end
+    package.loaded['file'] = file_stub
+
+    local Lock = dofile('$LIB_DIR/lock.lua')
+    local state = Lock.try_acquire('$lock')
+    if state ~= 'held_alive' then
+        error('expected held_alive (rollback), got ' .. tostring(state))
+    end
+    -- The lock dir must have been cleaned up as part of the rollback.
+    local f = io.open('$lock/pid', 'r')
+    if f then f:close(); error('pid file should not exist after rollback') end
+    print('ok')
+  "
+  # Sanity: lock dir should not persist.
+  [ ! -d "$lock" ]
+}
+
 @test "stale lock can be reclaimed and re-acquired" {
   mkdir -p "$LOCK"
   printf '2999999\n' > "$LOCK/pid"

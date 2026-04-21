@@ -12,8 +12,9 @@
 ---     mise's vfox spawns sh directly via Rust's std::process::Command
 ---     (no intermediate shell layer).
 ---   - When another process finds the lock held, it reads the PID and
----     checks `kill -0 $pid`. If the holder is dead, the lock is stale
----     and can be reclaimed (rm -rf).
+---     checks `ps -p $pid`. If the holder is dead, the lock is stale
+---     and can be reclaimed (rm -rf). See is_stale() for why `ps -p`
+---     rather than `kill -0`.
 ---
 --- Tradeoffs:
 ---   - PID reuse: if the holder's PID was recycled by the OS, we may
@@ -21,9 +22,17 @@
 ---     unnecessarily. This is rare and no worse than today's behavior.
 ---   - The PID file is written in a second cmd.exec after mkdir, so
 ---     there is a microscopic window where the lock dir exists but the
----     pid file doesn't. is_stale() treats missing/malformed pid as
----     stale so a crashed process between mkdir and the pid write
----     doesn't wedge forever.
+---     pid file doesn't. This cuts two ways:
+---       1. Good: if the holder crashes in this window, is_stale()
+---          sees a pid-less lock and returns true — the next caller
+---          reclaims instead of spinning for the full retry budget.
+---       2. Bad: a retrying caller racing in this window sees a
+---          pid-less lock, marks it stale, and could reclaim a live
+---          holder's lock. try_acquire() mitigates this by rolling
+---          back the mkdir if the pid write itself fails; the
+---          remaining window (mkdir succeeds, pid write is mid-flight)
+---          is ~1ms and, in the worst case, produces a duplicate
+---          clone attempt — annoying but not data-destructive.
 ---
 --- See KnickKnackLabs/vfox-shiv#8.
 
@@ -89,7 +98,15 @@ function M.try_acquire(lock_path)
     local ok = pcall(cmd.exec, "mkdir '" .. lock_path .. "' 2>/dev/null")
     if ok then
         -- Write holder PID. $PPID is the mise process (sh -c's parent).
-        pcall(cmd.exec, "echo $PPID > '" .. lock_path .. "/pid'")
+        -- If the write fails (e.g. ENOSPC, EACCES), roll back the mkdir
+        -- so a concurrent caller doesn't see a pid-less lock and reclaim
+        -- it out from under us. Return "held_alive" so the caller sleeps
+        -- and retries rather than racing straight into a second clone.
+        local pid_ok = pcall(cmd.exec, "echo $PPID > '" .. lock_path .. "/pid'")
+        if not pid_ok then
+            pcall(cmd.exec, "rm -rf '" .. lock_path .. "'")
+            return "held_alive"
+        end
         return "acquired"
     end
     if M.is_stale(lock_path) then
