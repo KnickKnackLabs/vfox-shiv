@@ -70,3 +70,26 @@ run_path_lua() {
   [ "$status" -eq 0 ]
   [ "$output" = "/.local/share/mise/shiv-backend/shiv" ]
 }
+
+@test "VFOX_SHIV_PATH whitespace-only falls through" {
+  run run_path_lua 'VFOX_SHIV_PATH=    MISE_DATA_DIR=/tmp/data HOME=/home/u' \
+    'print(Paths.get_shiv_path())'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/tmp/data/shiv-backend/shiv" ]
+}
+
+@test "MISE_DATA_DIR whitespace-only falls through to HOME" {
+  run run_path_lua 'MISE_DATA_DIR=    HOME=/home/u' \
+    'print(Paths.get_shiv_path())'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/home/u/.local/share/mise/shiv-backend/shiv" ]
+}
+
+@test "VFOX_SHIV_PATH with surrounding whitespace is trimmed" {
+  # Leading/trailing whitespace (from a fat-fingered copy-paste) should
+  # be trimmed rather than returned verbatim.
+  run env -i VFOX_SHIV_PATH="  /trimmed  " HOME=/home/u "$LUA_BIN" -e \
+    "local Paths = dofile('$LIB'); print(Paths.get_shiv_path())"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/trimmed" ]
+}
