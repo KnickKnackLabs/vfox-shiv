@@ -6,7 +6,7 @@ setup() {
 }
 
 run_lua() {
-  lua -e "dofile('$LIB'); $1"
+  lua -e "local Errors = dofile('$LIB'); $1"
 }
 
 @test "strip_terminal_noise removes ANSI color codes" {
