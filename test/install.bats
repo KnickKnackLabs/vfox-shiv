@@ -69,12 +69,14 @@ setup() {
 @test "install nonexistent package shows clean error" {
   setup_mise_project '"shiv:nonexistent-pkg-xyzzy" = "0.1.0"'
 
-  run mise install
+  # NO_COLOR suppresses mise's own red-wrap on the ERROR line so we can
+  # assert cleanly on the hook-produced text. In CI (CI=true), mise
+  # force-colors stderr even without a TTY; without NO_COLOR, mise's
+  # own \e[31m...\e[0m wrappers would leak into $output and trip the
+  # "no raw escape codes" check below. The check is about whether our
+  # hook outputs clean text — not whether mise decorates the line.
+  run env NO_COLOR=1 mise install
   [ "$status" -ne 0 ]
-  # DEBUG: dump output hex so we can see what's bleeding through on CI.
-  echo "--- output (hex) ---" >&2
-  printf '%s' "$output" | od -c | head -40 >&2
-  echo "--- /output ---" >&2
   # Error should mention the package name and be readable (no raw escape codes)
   echo "$output" | grep -qi "shiv install failed\|not found"
   # Should not contain raw ANSI escape sequences
