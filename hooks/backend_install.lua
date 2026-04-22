@@ -1,6 +1,7 @@
 -- Shared libs: mise's vfox adds the plugin's lib/?.lua to package.path,
 -- so require("name") loads lib/name.lua.
 local Errors = require("errors")
+local Paths = require("path")
 
 --- Installs a shiv package by delegating to shiv's install task.
 --- Bootstraps shiv if not already present.
@@ -201,9 +202,8 @@ function shiv_mise_env()
 end
 
 --- Get the path to the plugin's shiv clone.
+--- Delegates to lib/path.lua.
 --- @return string
 function get_shiv_path()
-    local home = os.getenv("HOME") or ""
-    return os.getenv("VFOX_SHIV_PATH")
-        or (home .. "/.local/share/mise/shiv-backend/shiv")
+    return Paths.get_shiv_path()
 end
