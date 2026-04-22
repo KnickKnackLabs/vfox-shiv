@@ -1,3 +1,7 @@
+-- Shared libs: mise's vfox adds the plugin's lib/?.lua to package.path,
+-- so require("name") loads lib/name.lua.
+local Errors = require("errors")
+
 --- Installs a shiv package by delegating to shiv's install task.
 --- Bootstraps shiv if not already present.
 --- @param ctx BackendInstallCtx
