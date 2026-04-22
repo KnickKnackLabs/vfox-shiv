@@ -71,6 +71,10 @@ setup() {
 
   run mise install
   [ "$status" -ne 0 ]
+  # DEBUG: dump output hex so we can see what's bleeding through on CI.
+  echo "--- output (hex) ---" >&2
+  printf '%s' "$output" | od -c | head -40 >&2
+  echo "--- /output ---" >&2
   # Error should mention the package name and be readable (no raw escape codes)
   echo "$output" | grep -qi "shiv install failed\|not found"
   # Should not contain raw ANSI escape sequences
