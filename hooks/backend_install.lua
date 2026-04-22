@@ -2,6 +2,7 @@
 -- so require("name") loads lib/name.lua.
 local Errors = require("errors")
 local Paths = require("path")
+local Lock = require("lock")
 
 --- Installs a shiv package by delegating to shiv's install task.
 --- Bootstraps shiv if not already present.
@@ -103,28 +104,39 @@ function ensure_shiv()
 
     -- Bootstrap: clone shiv at the pinned ref.
     -- Multiple shiv:* tools may try to bootstrap simultaneously via
-    -- parallel mise install. Use mkdir as an atomic lock.
+    -- parallel mise install. Use mkdir as an atomic lock, with PID-based
+    -- staleness detection (see lib/lock.lua) so a crashed mise session
+    -- doesn't wedge every future install for the full retry budget.
     local lock_path = shiv_path .. ".lock"
     local parent_dir = shiv_path:match("(.+)/[^/]+$")
     if parent_dir then
         pcall(cmd.exec, "mkdir -p '" .. parent_dir .. "'")
     end
 
-    -- Spin until we acquire the lock or shiv appears
+    -- Retry budget: 30 × 0.5s = 15s. A shallow clone of shiv takes <5s on
+    -- a normal network; 15s is generous for a legitimate concurrent
+    -- bootstrap and fast enough that users don't wonder if mise hung.
+    -- Override for tests via VFOX_SHIV_LOCK_MAX_ATTEMPTS.
+    local max_attempts = tonumber(os.getenv("VFOX_SHIV_LOCK_MAX_ATTEMPTS") or "30") or 30
+
     local got_lock = false
-    for attempt = 1, 60 do
+    for _ = 1, max_attempts do
         -- Check if another installer already finished
         if file.exists(shiv_path .. "/.git/HEAD") then
             return shiv_path
         end
-        -- Try to acquire lock (mkdir is atomic on POSIX)
-        local ok = pcall(cmd.exec, "mkdir '" .. lock_path .. "' 2>/dev/null")
-        if ok then
+        local state = Lock.try_acquire(lock_path)
+        if state == "acquired" then
             got_lock = true
             break
         end
-        -- Lock held by another installer — wait and retry
-        pcall(cmd.exec, "sleep 1")
+        if state == "stale" then
+            -- Holder is dead — reclaim and retry immediately.
+            Lock.reclaim(lock_path)
+        else
+            -- Lock held by a live installer — wait and retry.
+            pcall(cmd.exec, "sleep 0.5")
+        end
     end
 
     if not got_lock then
@@ -132,12 +144,16 @@ function ensure_shiv()
         if file.exists(shiv_path .. "/.git/HEAD") then
             return shiv_path
         end
-        error("Timed out waiting for shiv bootstrap lock")
+        error(
+            "Timed out waiting for shiv bootstrap lock at " .. lock_path ..
+            ".\nIf no other mise install is running, remove the stale lock:\n" ..
+            "  rm -rf '" .. lock_path .. "'"
+        )
     end
 
     -- We hold the lock. Re-check in case someone finished just before us.
     if file.exists(shiv_path .. "/.git/HEAD") then
-        pcall(cmd.exec, "rmdir '" .. lock_path .. "'")
+        Lock.release(lock_path)
         return shiv_path
     end
 
@@ -147,7 +163,7 @@ function ensure_shiv()
 
     local ok, result = pcall(cmd.exec, clone_cmd)
     -- Release lock regardless of outcome
-    pcall(cmd.exec, "rmdir '" .. lock_path .. "'")
+    Lock.release(lock_path)
     if not ok then
         -- Clean up partial clone
         pcall(cmd.exec, "rm -rf '" .. shiv_path .. "'")
