@@ -180,9 +180,10 @@ function ensure_shiv()
 
     -- Install shiv's runtime dependencies (gum).
     -- This must succeed — shiv's tasks (install, update, etc.) require gum.
-    -- Unset GITHUB_TOKEN to avoid GHE tokens blocking github.com downloads.
+    -- Unset GitHub token env vars to avoid inherited CI/GHE credentials
+    -- blocking anonymous github.com downloads.
     local install_ok, install_err = pcall(cmd.exec,
-        "env -u GITHUB_TOKEN " .. shiv_mise_env() .. mise_bin .. " install -q -C '" .. shiv_path .. "'")
+        "env -u GITHUB_TOKEN -u GH_TOKEN " .. shiv_mise_env() .. mise_bin .. " install -q -C '" .. shiv_path .. "'")
     if not install_ok then
         error("Failed to install shiv dependencies (gum): " .. tostring(install_err))
     end

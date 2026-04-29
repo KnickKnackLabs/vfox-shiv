@@ -30,9 +30,10 @@ teardown() {
   echo "$output" | grep -q "gum version"
 }
 
-@test "bootstrap succeeds when GITHUB_TOKEN is set to a non-github.com token" {
-  # Simulate a GHE environment where GITHUB_TOKEN doesn't work on github.com
+@test "bootstrap succeeds when GitHub token env vars are set to non-github.com tokens" {
+  # Simulate a GHE environment where inherited tokens don't work on github.com.
   export GITHUB_TOKEN="ghp_fake_ghe_token_that_should_not_be_used"
+  export GH_TOKEN="ghp_fake_gh_token_that_should_not_be_used"
 
   run mise install shiv:readme@0.1.0
   [ "$status" -eq 0 ]
