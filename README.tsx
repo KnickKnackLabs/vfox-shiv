@@ -23,7 +23,7 @@ const testCount = testFiles.reduce((sum, f) => {
 
 // Read pinned shiv version from backend_install.lua
 const installHook = readFileSync(join(REPO_DIR, "hooks/backend_install.lua"), "utf-8");
-const shivRef = installHook.match(/or "([^"]+)".*shiv_ref/)?.[1] ?? "v0.1.0";
+const shivRef = installHook.match(/shiv_ref.*or "([^"]+)"/)?.[1] ?? "v0.1.0";
 
 // ── README ───────────────────────────────────────────────────
 

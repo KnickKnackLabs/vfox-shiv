@@ -27,13 +27,19 @@ function PLUGIN:BackendListVersions(ctx)
     -- curl is always available; gh may not be on PATH inside mise's Lua sandbox.
     -- Pass GITHUB_TOKEN for auth if available (avoids rate limits in CI).
     local versions = {}
+    if os.getenv("VFOX_SHIV_SKIP_TAG_FETCH") == "1" then
+        table.insert(versions, "latest")
+        return { versions = versions }
+    end
     local auth_header = ""
     local gh_token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN") or ""
     if gh_token ~= "" then
-        auth_header = "-H 'Authorization: token " .. gh_token .. "' "
+        -- Keep the token out of the command string so verbose mise logs don't
+        -- print credentials. The shell expands the environment variable.
+        auth_header = [[-H "Authorization: token ${GITHUB_TOKEN:-$GH_TOKEN}" ]]
     end
     local ok, output = pcall(cmd.exec,
-        "curl -sf " .. auth_header .. "https://api.github.com/repos/" .. repo .. "/tags | jq -r '.[].name' 2>/dev/null")
+        "curl -sf --max-time 10 " .. auth_header .. "https://api.github.com/repos/" .. repo .. "/tags | jq -r '.[].name' 2>/dev/null")
     if ok and output and output ~= "" then
         -- Parse tags into version list
         local tags = {}
