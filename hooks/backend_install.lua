@@ -93,12 +93,10 @@ function ensure_shiv()
     local shiv_path = get_shiv_path()
 
     -- Pin to a specific shiv version for reproducibility
-    local shiv_ref = os.getenv("VFOX_SHIV_REF") or "v0.2.3"
+    local shiv_ref = os.getenv("VFOX_SHIV_REF") or "v0.2.5"
     local shiv_repo = os.getenv("VFOX_SHIV_REPO") or "https://github.com/KnickKnackLabs/shiv.git"
 
-    if file.exists(shiv_path .. "/.git/HEAD") then
-        -- Already cloned — verify ref if pinned
-        -- (For now, trust what's there. Version pinning enforcement can come later.)
+    if shiv_ready(shiv_path, shiv_ref) then
         return shiv_path
     end
 
@@ -122,7 +120,7 @@ function ensure_shiv()
     local got_lock = false
     for _ = 1, max_attempts do
         -- Check if another installer already finished
-        if file.exists(shiv_path .. "/.git/HEAD") then
+        if shiv_ready(shiv_path, shiv_ref) then
             return shiv_path
         end
         local state = Lock.try_acquire(lock_path)
@@ -141,7 +139,7 @@ function ensure_shiv()
 
     if not got_lock then
         -- Final check before giving up
-        if file.exists(shiv_path .. "/.git/HEAD") then
+        if shiv_ready(shiv_path, shiv_ref) then
             return shiv_path
         end
         error(
@@ -152,9 +150,15 @@ function ensure_shiv()
     end
 
     -- We hold the lock. Re-check in case someone finished just before us.
-    if file.exists(shiv_path .. "/.git/HEAD") then
+    if shiv_ready(shiv_path, shiv_ref) then
         Lock.release(lock_path)
         return shiv_path
+    end
+
+    -- The plugin owns this clone. If the pinned ref changed, replace the old
+    -- bootstrap so existing users pick up shiv fixes without manual cleanup.
+    if file.exists(shiv_path .. "/.git/HEAD") then
+        pcall(cmd.exec, "rm -rf '" .. shiv_path .. "'")
     end
 
     -- Clone shiv
@@ -176,14 +180,43 @@ function ensure_shiv()
 
     -- Install shiv's runtime dependencies (gum).
     -- This must succeed — shiv's tasks (install, update, etc.) require gum.
-    -- Unset GITHUB_TOKEN to avoid GHE tokens blocking github.com downloads.
+    -- Unset GitHub token env vars to avoid inherited CI/GHE credentials
+    -- blocking anonymous github.com downloads.
     local install_ok, install_err = pcall(cmd.exec,
-        "env -u GITHUB_TOKEN " .. shiv_mise_env() .. mise_bin .. " install -q -C '" .. shiv_path .. "'")
+        "env -u GITHUB_TOKEN -u GH_TOKEN " .. shiv_mise_env() .. mise_bin .. " install -q -C '" .. shiv_path .. "'")
     if not install_ok then
         error("Failed to install shiv dependencies (gum): " .. tostring(install_err))
     end
 
     return shiv_path
+end
+
+--- Check whether the plugin-managed shiv clone exists at the desired ref.
+--- @param shiv_path string
+--- @param shiv_ref string
+--- @return boolean
+function shiv_ready(shiv_path, shiv_ref)
+    local file = require("file")
+    if not file.exists(shiv_path .. "/.git/HEAD") then
+        return false
+    end
+
+    local cmd = require("cmd")
+    local ok, current = pcall(cmd.exec, "git -C '" .. shiv_path .. "' describe --tags --exact-match HEAD 2>/dev/null")
+    if ok and trim(current) == shiv_ref then
+        return true
+    end
+
+    local head_ok, head = pcall(cmd.exec, "git -C '" .. shiv_path .. "' rev-parse HEAD 2>/dev/null")
+    local ref_ok, ref = pcall(cmd.exec, "git -C '" .. shiv_path .. "' rev-parse '" .. shiv_ref .. "^{commit}' 2>/dev/null")
+    return head_ok and ref_ok and trim(head) == trim(ref)
+end
+
+--- Trim leading/trailing whitespace.
+--- @param value string
+--- @return string
+function trim(value)
+    return (value or ""):gsub("^%s+", ""):gsub("%s+$", "")
 end
 
 --- Find the mise binary.

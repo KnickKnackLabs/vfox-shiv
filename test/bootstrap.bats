@@ -13,7 +13,7 @@ setup() {
 
 @test "bootstrapped shiv is pinned to expected ref" {
   local shiv_path="${VFOX_SHIV_PATH:-$HOME/.local/share/mise/shiv-backend/shiv}"
-  local expected_ref="${VFOX_SHIV_REF:-v0.2.3}"
+  local expected_ref="${VFOX_SHIV_REF:-v0.2.5}"
 
   run git -C "$shiv_path" describe --tags --exact-match HEAD
   [ "$status" -eq 0 ]
@@ -36,14 +36,16 @@ _isolated_install() {
 
   local data_dir="$BATS_TEST_TMPDIR/mise-data"
   local cfg_dir="$BATS_TEST_TMPDIR/mise-config"
+  local sources_dir="$BATS_TEST_TMPDIR/shiv-sources"
   local tmpdir="$BATS_TEST_TMPDIR/project"
-  mkdir -p "$data_dir" "$cfg_dir" "$tmpdir"
+  mkdir -p "$data_dir" "$cfg_dir" "$sources_dir" "$tmpdir"
+  printf '{"empty":"KnickKnackLabs/empty"}\n' > "$sources_dir/empty.json"
 
   cat > "$tmpdir/mise.toml" <<MISE
 [settings]
 experimental = true
 [tools]
-"shiv:readme" = "latest"
+"shiv:empty" = "latest"
 MISE
 
   MISE_DATA_DIR="$data_dir" MISE_CONFIG_DIR="$cfg_dir" \
@@ -55,6 +57,7 @@ MISE
     cd "$tmpdir"
     unset VFOX_SHIV_PATH  # make sure the caller's export wins
     VFOX_SHIV_PATH="$shiv_path" VFOX_SHIV_LOCK_MAX_ATTEMPTS="$max_attempts" \
+      SHIV_SOURCES_DIR="$sources_dir" VFOX_SHIV_SKIP_TAG_FETCH=1 \
       MISE_DATA_DIR="$data_dir" MISE_CONFIG_DIR="$cfg_dir" \
       mise install
   ) > "$out" 2>&1
@@ -69,8 +72,10 @@ MISE
   # MISE_DATA_DIR branch end-to-end, not _isolated_install above.
   local isolated="$BATS_TEST_TMPDIR/mise-isolated"
   local cfgdir="$BATS_TEST_TMPDIR/mise-config-path"
+  local sources_dir="$BATS_TEST_TMPDIR/mise-data-dir-sources"
   local expected="$isolated/shiv-backend/shiv"
-  mkdir -p "$isolated" "$cfgdir"
+  mkdir -p "$isolated" "$cfgdir" "$sources_dir"
+  printf '{"empty":"KnickKnackLabs/empty"}\n' > "$sources_dir/empty.json"
 
   local tmpdir="$BATS_TEST_TMPDIR/mise-data-dir-trigger"
   mkdir -p "$tmpdir"
@@ -78,7 +83,7 @@ MISE
 [settings]
 experimental = true
 [tools]
-"shiv:readme" = "latest"
+"shiv:empty" = "latest"
 MISE
   MISE_DATA_DIR="$isolated" MISE_CONFIG_DIR="$cfgdir" \
     mise trust "$tmpdir/mise.toml" 2>/dev/null
@@ -88,7 +93,8 @@ MISE
   (
     cd "$tmpdir"
     unset VFOX_SHIV_PATH
-    MISE_DATA_DIR="$isolated" MISE_CONFIG_DIR="$cfgdir" \
+    SHIV_SOURCES_DIR="$sources_dir" VFOX_SHIV_SKIP_TAG_FETCH=1 \
+      MISE_DATA_DIR="$isolated" MISE_CONFIG_DIR="$cfgdir" \
       mise install 2>/dev/null
   ) || true
 

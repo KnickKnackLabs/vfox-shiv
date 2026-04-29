@@ -33,22 +33,42 @@ EOF
   mise trust "$TESTDIR/mise.toml" 2>/dev/null
 }
 
-# Ensure the shiv backend clone exists.
-# On fresh machines (CI), no bootstrap has happened yet.
-# Triggers one by installing a lightweight package.
+# Ensure the shiv backend clone exists at the expected ref.
+# On fresh machines (CI), no bootstrap has happened yet. On existing machines,
+# a previous vfox-shiv run may have bootstrapped an older shiv ref.
+# Triggers bootstrap by installing a lightweight package.
 ensure_bootstrap() {
   local shiv_path="${VFOX_SHIV_PATH:-$HOME/.local/share/mise/shiv-backend/shiv}"
-  if [ ! -d "$shiv_path/.git" ]; then
+  local expected_ref="${VFOX_SHIV_REF:-v0.2.5}"
+  local current_ref=""
+
+  if [ -d "$shiv_path/.git" ]; then
+    current_ref=$(git -C "$shiv_path" describe --tags --exact-match HEAD 2>/dev/null || true)
+  fi
+
+  if [ ! -d "$shiv_path/.git" ] || [ "$current_ref" != "$expected_ref" ]; then
     local tmpdir="$BATS_TEST_TMPDIR/bootstrap-trigger"
-    mkdir -p "$tmpdir"
+    local data_dir="$BATS_TEST_TMPDIR/bootstrap-mise-data"
+    local cfg_dir="$BATS_TEST_TMPDIR/bootstrap-mise-config"
+    local sources_dir="$BATS_TEST_TMPDIR/bootstrap-shiv-sources"
+    mkdir -p "$tmpdir" "$data_dir" "$cfg_dir" "$sources_dir"
+    printf '{"empty":"KnickKnackLabs/empty"}\n' > "$sources_dir/empty.json"
     cat > "$tmpdir/mise.toml" <<MISE
 [settings]
 experimental = true
 [tools]
-"shiv:readme" = "latest"
+"shiv:empty" = "latest"
 MISE
-    mise trust "$tmpdir/mise.toml" 2>/dev/null
-    (cd "$tmpdir" && mise install 2>/dev/null) || true
+    MISE_DATA_DIR="$data_dir" MISE_CONFIG_DIR="$cfg_dir" \
+      mise trust "$tmpdir/mise.toml" 2>/dev/null
+    MISE_DATA_DIR="$data_dir" MISE_CONFIG_DIR="$cfg_dir" \
+      mise plugins link --force shiv "$PLUGIN_DIR" 2>/dev/null
+    (
+      cd "$tmpdir"
+      VFOX_SHIV_PATH="$shiv_path" SHIV_SOURCES_DIR="$sources_dir" VFOX_SHIV_SKIP_TAG_FETCH=1 \
+        MISE_DATA_DIR="$data_dir" MISE_CONFIG_DIR="$cfg_dir" \
+        mise install
+    )
   fi
 }
 

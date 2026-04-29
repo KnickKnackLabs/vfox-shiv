@@ -11,39 +11,62 @@ setup() {
   export XDG_CACHE_HOME="$BATS_TEST_TMPDIR/cache"
   mkdir -p "$XDG_CACHE_HOME/mise/shiv-backend"
 
-  # Mock HTTP server serving a custom sources.json
+  # Mock curl serving a custom sources.json. This keeps the tests independent
+  # of GitHub API rate limits and local HTTP server behavior.
   MOCK_DIR="$BATS_TEST_TMPDIR/mock-server"
-  mkdir -p "$MOCK_DIR"
+  MOCK_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_DIR" "$MOCK_BIN"
   cat > "$MOCK_DIR/sources.json" <<'EOF'
 {
   "remote-only-pkg": "TestOrg/remote-only-pkg",
   "shimmer": "KnickKnackLabs/shimmer"
 }
 EOF
+  cat > "$MOCK_BIN/curl" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
 
-  MOCK_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); print(s.getsockname()[1]); s.close()")
-  python3 -m http.server "$MOCK_PORT" --directory "$MOCK_DIR" &>/dev/null &
-  MOCK_PID=$!
+mock_url="http://mock.local/sources.json"
+source_file="$MOCK_DIR/sources.json"
+output=""
+url=""
 
-  # Wait for server readiness
-  for _ in $(seq 1 30); do
-    curl -sf "http://localhost:$MOCK_PORT/sources.json" &>/dev/null && break
-    sleep 0.1
-  done
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -o)
+      output="\$2"
+      shift 2
+      ;;
+    -*)
+      shift
+      ;;
+    *)
+      url="\$1"
+      shift
+      ;;
+  esac
+done
 
-  export VFOX_SHIV_SOURCES_URL="http://localhost:$MOCK_PORT/sources.json"
+if [ "\$url" != "\$mock_url" ]; then
+  exit 22
+fi
+
+if [ -n "\$output" ]; then
+  cp "\$source_file" "\$output"
+else
+  cat "\$source_file"
+fi
+EOF
+  chmod +x "$MOCK_BIN/curl"
+  export PATH="$MOCK_BIN:$PATH"
+
+  export VFOX_SHIV_SOURCES_URL="http://mock.local/sources.json"
   export VFOX_SHIV_CACHE_TTL=300
+  export VFOX_SHIV_SKIP_TAG_FETCH=1
 
   # Point user sources at an empty dir so only remote + bundled are checked
   export SHIV_SOURCES_DIR="$BATS_TEST_TMPDIR/empty-sources"
   mkdir -p "$SHIV_SOURCES_DIR"
-}
-
-teardown() {
-  if [[ -n "${MOCK_PID:-}" ]]; then
-    kill "$MOCK_PID" 2>/dev/null
-    wait "$MOCK_PID" 2>/dev/null || true
-  fi
 }
 
 # ── Remote fetch ──────────────────────────────────────────────
@@ -58,7 +81,7 @@ teardown() {
 @test "remote resolution also works for packages in bundled sources" {
   run mise ls-remote shiv:shimmer
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "0.0.1-alpha"
+  echo "$output" | grep -q "latest"
 }
 
 # ── Caching ───────────────────────────────────────────────────
@@ -78,9 +101,8 @@ teardown() {
   # Prime the cache
   mise ls-remote shiv:shimmer 2>/dev/null
 
-  # Kill the server
-  kill "$MOCK_PID" 2>/dev/null; wait "$MOCK_PID" 2>/dev/null || true; MOCK_PID=""
-  sleep 0.3
+  # Make the remote URL unreachable. A fresh cache should avoid refetching.
+  export VFOX_SHIV_SOURCES_URL="http://mock.local/unavailable.json"
 
   # Should still resolve remote-only-pkg from cache
   run mise ls-remote shiv:remote-only-pkg
