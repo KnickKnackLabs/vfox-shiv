@@ -44,16 +44,16 @@ local M = {}
 --- @param lock_path string
 --- @return string|nil
 function M.read_pid(lock_path)
-    local cmd = require("cmd")
-    local ok, output = pcall(cmd.exec, "cat '" .. lock_path .. "/pid' 2>/dev/null")
-    if not ok or not output then
-        return nil
-    end
-    local trimmed = output:gsub("%s+", "")
-    if trimmed == "" or trimmed:match("[^%d]") then
-        return nil
-    end
-    return trimmed
+  local cmd = require("cmd")
+  local ok, output = pcall(cmd.exec, "cat '" .. lock_path .. "/pid' 2>/dev/null")
+  if not ok or not output then
+    return nil
+  end
+  local trimmed = output:gsub("%s+", "")
+  if trimmed == "" or trimmed:match("[^%d]") then
+    return nil
+  end
+  return trimmed
 end
 
 --- Return true if the lock exists but its holder is no longer running
@@ -61,27 +61,27 @@ end
 --- @param lock_path string
 --- @return boolean
 function M.is_stale(lock_path)
-    local cmd = require("cmd")
-    local file = require("file")
-    if not file.exists(lock_path) then
-        return false  -- no lock, not "stale" in any meaningful sense
-    end
-    local pid = M.read_pid(lock_path)
-    if not pid then
-        return true   -- lock dir without a valid pid file = orphaned
-    end
-    -- `ps -p` works regardless of process ownership; `kill -0` returns
-    -- EPERM for cross-user processes (including PID 1 when the caller is
-    -- non-root), which would spuriously mark a live lock as stale.
-    local alive = pcall(cmd.exec, "ps -p " .. pid .. " > /dev/null 2>&1")
-    return not alive
+  local cmd = require("cmd")
+  local file = require("file")
+  if not file.exists(lock_path) then
+    return false -- no lock, not "stale" in any meaningful sense
+  end
+  local pid = M.read_pid(lock_path)
+  if not pid then
+    return true -- lock dir without a valid pid file = orphaned
+  end
+  -- `ps -p` works regardless of process ownership; `kill -0` returns
+  -- EPERM for cross-user processes (including PID 1 when the caller is
+  -- non-root), which would spuriously mark a live lock as stale.
+  local alive = pcall(cmd.exec, "ps -p " .. pid .. " > /dev/null 2>&1")
+  return not alive
 end
 
 --- Remove a stale lock directory. Safe to call on a non-existent path.
 --- @param lock_path string
 function M.reclaim(lock_path)
-    local cmd = require("cmd")
-    pcall(cmd.exec, "rm -rf '" .. lock_path .. "'")
+  local cmd = require("cmd")
+  pcall(cmd.exec, "rm -rf '" .. lock_path .. "'")
 end
 
 --- Attempt to acquire the lock once.
@@ -94,32 +94,32 @@ end
 --- @param lock_path string
 --- @return string
 function M.try_acquire(lock_path)
-    local cmd = require("cmd")
-    local ok = pcall(cmd.exec, "mkdir '" .. lock_path .. "' 2>/dev/null")
-    if ok then
-        -- Write holder PID. $PPID is the mise process (sh -c's parent).
-        -- If the write fails (e.g. ENOSPC, EACCES), roll back the mkdir
-        -- so a concurrent caller doesn't see a pid-less lock and reclaim
-        -- it out from under us. Return "held_alive" so the caller sleeps
-        -- and retries rather than racing straight into a second clone.
-        local pid_ok = pcall(cmd.exec, "echo $PPID > '" .. lock_path .. "/pid'")
-        if not pid_ok then
-            pcall(cmd.exec, "rm -rf '" .. lock_path .. "'")
-            return "held_alive"
-        end
-        return "acquired"
+  local cmd = require("cmd")
+  local ok = pcall(cmd.exec, "mkdir '" .. lock_path .. "' 2>/dev/null")
+  if ok then
+    -- Write holder PID. $PPID is the mise process (sh -c's parent).
+    -- If the write fails (e.g. ENOSPC, EACCES), roll back the mkdir
+    -- so a concurrent caller doesn't see a pid-less lock and reclaim
+    -- it out from under us. Return "held_alive" so the caller sleeps
+    -- and retries rather than racing straight into a second clone.
+    local pid_ok = pcall(cmd.exec, "echo $PPID > '" .. lock_path .. "/pid'")
+    if not pid_ok then
+      pcall(cmd.exec, "rm -rf '" .. lock_path .. "'")
+      return "held_alive"
     end
-    if M.is_stale(lock_path) then
-        return "stale"
-    end
-    return "held_alive"
+    return "acquired"
+  end
+  if M.is_stale(lock_path) then
+    return "stale"
+  end
+  return "held_alive"
 end
 
 --- Release a lock we hold. Safe to call even if the lock is missing.
 --- @param lock_path string
 function M.release(lock_path)
-    local cmd = require("cmd")
-    pcall(cmd.exec, "rm -rf '" .. lock_path .. "'")
+  local cmd = require("cmd")
+  pcall(cmd.exec, "rm -rf '" .. lock_path .. "'")
 end
 
 return M

@@ -1,0 +1,17 @@
+{
+    "format_on_save": "on",
+
+    "languages": {
+        "Lua": {
+            "tab_size": 2,
+            "hard_tabs": false,
+
+            "formatter": {
+                "external": {
+                    "command": "stylua",
+                    "arguments": ["--stdin-filepath", "{buffer_path}", "-"],
+                },
+            },
+        },
+    },
+}

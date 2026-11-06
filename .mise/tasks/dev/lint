@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Lint code"
+set -euo pipefail
+
+mise exec -- lua-language-server \
+    --checklevel='Hint' \
+    --check="${MISE_CONFIG_ROOT}"

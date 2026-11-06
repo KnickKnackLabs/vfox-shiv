@@ -12,10 +12,14 @@ local M = {}
 ---@param s string|nil
 ---@return string|nil
 local function nonblank(s)
-    if not s then return nil end
-    local trimmed = s:gsub("^%s+", ""):gsub("%s+$", "")
-    if trimmed == "" then return nil end
-    return trimmed
+  if not s then
+    return nil
+  end
+  local trimmed = s:gsub("^%s+", ""):gsub("%s+$", "")
+  if trimmed == "" then
+    return nil
+  end
+  return trimmed
 end
 
 --- Get the path to the plugin's shiv clone.
@@ -39,16 +43,16 @@ end
 ---
 --- @return string
 function M.get_shiv_path()
-    local override = nonblank(os.getenv("VFOX_SHIV_PATH"))
-    if override then
-        return override
-    end
-    local data_dir = nonblank(os.getenv("MISE_DATA_DIR"))
-    if data_dir then
-        return data_dir .. "/shiv-backend/shiv"
-    end
-    local home = os.getenv("HOME") or ""
-    return home .. "/.local/share/mise/shiv-backend/shiv"
+  local override = nonblank(os.getenv("VFOX_SHIV_PATH"))
+  if override then
+    return override
+  end
+  local data_dir = nonblank(os.getenv("MISE_DATA_DIR"))
+  if data_dir then
+    return data_dir .. "/shiv-backend/shiv"
+  end
+  local home = os.getenv("HOME") or ""
+  return home .. "/.local/share/mise/shiv-backend/shiv"
 end
 
 return M

@@ -1,0 +1,4 @@
+#:schema https://www.schemastore.org/stylua.json
+
+indent_type = "Spaces"
+indent_width = 2

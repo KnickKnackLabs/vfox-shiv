@@ -9,6 +9,6 @@ PLUGIN.description = "mise backend plugin for shiv packages"
 PLUGIN.author = "KnickKnackLabs"
 
 PLUGIN.notes = {
-    "Requires git on PATH",
-    "Bootstraps shiv automatically on first use",
+  "Requires git on PATH",
+  "Bootstraps shiv automatically on first use",
 }
