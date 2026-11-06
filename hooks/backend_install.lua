@@ -389,7 +389,6 @@ end
 --- Falls back silently if fetch fails (bundled sources still work).
 function sync_bundled_sources(shiv_path)
   local cmd = require("cmd")
-  local file = require("file")
 
   local sources_url = os.getenv("VFOX_SHIV_SOURCES_URL")
     or "https://raw.githubusercontent.com/KnickKnackLabs/shiv/main/sources.json"
@@ -576,12 +575,13 @@ end
 --- @param shiv_ref string
 --- @return boolean
 function shiv_ready(shiv_path, shiv_ref)
+  local cmd = require("cmd")
   local file = require("file")
+
   if not file.exists(shiv_path .. "/.git/HEAD") then
     return false
   end
 
-  local cmd = require("cmd")
   local ok, current = pcall(cmd.exec, "git -C '" .. shiv_path .. "' describe --tags --exact-match HEAD 2>/dev/null")
   if ok and trim(current) == shiv_ref then
     return true
@@ -590,6 +590,7 @@ function shiv_ready(shiv_path, shiv_ref)
   local head_ok, head = pcall(cmd.exec, "git -C '" .. shiv_path .. "' rev-parse HEAD 2>/dev/null")
   local ref_ok, ref =
     pcall(cmd.exec, "git -C '" .. shiv_path .. "' rev-parse '" .. shiv_ref .. "^{commit}' 2>/dev/null")
+
   return head_ok and ref_ok and trim(head) == trim(ref)
 end
 
@@ -597,30 +598,36 @@ end
 --- @param value string
 --- @return string
 function trim(value)
-  return (value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local trimmed = (value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  return trimmed
 end
 
 --- Find the mise binary.
 --- @return string
 function find_mise()
   local cmd = require("cmd")
+
   local ok, path = pcall(cmd.exec, "command -v mise")
   if ok and path and path ~= "" then
     return path:gsub("%s+$", "")
   end
+
   -- Fall back to common locations
   local home = os.getenv("HOME") or ""
+
   local candidates = {
     home .. "/.local/bin/mise",
     "/usr/local/bin/mise",
     "/usr/bin/mise",
   }
+
   for _, p in ipairs(candidates) do
     local file = require("file")
     if file.exists(p) then
       return p
     end
   end
+
   error("mise not found on PATH or in common locations")
 end
 

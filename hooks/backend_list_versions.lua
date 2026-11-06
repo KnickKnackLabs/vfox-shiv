@@ -12,7 +12,6 @@ local Shell = require("shell")
 --- @return BackendListVersionsResult
 function PLUGIN:BackendListVersions(ctx)
   local cmd = require("cmd")
-  local json = require("json")
   local tool = ctx.tool
 
   if not tool or tool == "" then
@@ -32,16 +31,20 @@ function PLUGIN:BackendListVersions(ctx)
   -- Pass GitHub token env for auth if available (avoids rate limits in CI).
   local versions = {}
   table.insert(versions, "main")
+
   if os.getenv("VFOX_SHIV_SKIP_TAG_FETCH") == "1" then
     return { versions = versions }
   end
+
   local auth_header = GitHubAuth.curl_auth_header()
   local tags_url = "https://api.github.com/repos/" .. repo .. "/tags"
+
   local ok, output = pcall(cmd.exec, curl_command() .. " -sf --max-time 10 " .. auth_header .. Shell.quote(tags_url))
   if ok and output and output ~= "" then
     -- Parse tag names in Lua instead of piping through jq so tests can
     -- inject CURL without also depending on the command environment's PATH.
     local tags = {}
+
     for tag in output:gmatch('"name"%s*:%s*"([^"]+)"') do
       -- Strip leading 'v' prefix for mise's version model
       local version = tag:gsub("^v", "")
