@@ -12,6 +12,7 @@ local Shell = require("shell")
 --- @return BackendInstallResult
 function PLUGIN:BackendInstall(ctx)
   local cmd = require("cmd")
+
   local tool = ctx.tool
   local version = ctx.version
   local install_path = ctx.install_path
@@ -19,9 +20,11 @@ function PLUGIN:BackendInstall(ctx)
   if not tool or tool == "" then
     error("Tool name cannot be empty")
   end
+
   if not version or version == "" then
     error("Version cannot be empty")
   end
+
   if not install_path or install_path == "" then
     error("Install path cannot be empty")
   end
@@ -39,6 +42,7 @@ function PLUGIN:BackendInstall(ctx)
 
   -- Build env string for the command
   local env_prefix = ""
+
   for k, v in pairs(shiv_env) do
     env_prefix = env_prefix .. k .. "='" .. v .. "' "
   end
@@ -49,40 +53,44 @@ function PLUGIN:BackendInstall(ctx)
   -- can race or fail while rebuilding runtime symlinks. Serialize this shared
   -- delegated phase, but allow descendant shiv installs from the same package
   -- install to reenter the lock.
-  local install_lock_path = shiv_path .. ".install.lock"
-  with_lock(install_lock_path, "VFOX_SHIV_INSTALL_LOCK_MAX_ATTEMPTS", "shiv package install", function(lock_owner)
-    -- Sync remote sources.json into bundled shiv so it knows about new packages.
-    -- Keep this inside the install lock because every package install writes the
-    -- same bundled sources.json file.
-    sync_bundled_sources(shiv_path)
+  with_lock(
+    shiv_path .. ".install.lock",
+    "VFOX_SHIV_INSTALL_LOCK_MAX_ATTEMPTS",
+    "shiv package install",
+    function(lock_owner)
+      -- Sync remote sources.json into bundled shiv so it knows about new packages.
+      -- Keep this inside the install lock because every package install writes the
+      -- same bundled sources.json file.
+      sync_bundled_sources(shiv_path)
 
-    local ref = resolve_install_ref(tool, version, shiv_path)
-    local tool_spec = tool .. "@" .. ref
+      local ref = resolve_install_ref(tool, version, shiv_path)
+      local tool_spec = tool .. "@" .. ref
 
-    -- Delegate to shiv install via mise. The outer exec provides shiv's
-    -- already-installed runtime tools on PATH; the inner run skips another
-    -- auto-install/symlink rebuild for those tools.
-    local mise_bin = find_mise()
-    local quoted_mise = Shell.quote(mise_bin)
-    local quoted_shiv_path = Shell.quote(shiv_path)
-    local install_cmd = env_prefix
-      .. shiv_mise_env()
-      .. install_lock_env(lock_owner)
-      .. quoted_mise
-      .. " -C "
-      .. quoted_shiv_path
-      .. " exec --no-deps -- "
-      .. quoted_mise
-      .. " -C "
-      .. quoted_shiv_path
-      .. " run --skip-tools -q install "
-      .. Shell.quote(tool_spec)
+      -- Delegate to shiv install via mise. The outer exec provides shiv's
+      -- already-installed runtime tools on PATH; the inner run skips another
+      -- auto-install/symlink rebuild for those tools.
+      local mise_bin = find_mise()
+      local quoted_mise = Shell.quote(mise_bin)
+      local quoted_shiv_path = Shell.quote(shiv_path)
+      local install_cmd = env_prefix
+        .. shiv_mise_env()
+        .. install_lock_env(lock_owner)
+        .. quoted_mise
+        .. " -C "
+        .. quoted_shiv_path
+        .. " exec --no-deps -- "
+        .. quoted_mise
+        .. " -C "
+        .. quoted_shiv_path
+        .. " run --skip-tools -q install "
+        .. Shell.quote(tool_spec)
 
-    local ok, result = pcall(cmd.exec, install_cmd)
-    if not ok then
-      error("shiv install failed for " .. tool_spec .. ": " .. Errors.clean_error(tostring(result)))
+      local ok, result = pcall(cmd.exec, install_cmd)
+      if not ok then
+        error("shiv install failed for " .. tool_spec .. ": " .. Errors.clean_error(tostring(result)))
+      end
     end
-  end)
+  )
 
   return {}
 end
@@ -101,9 +109,11 @@ function resolve_install_ref(tool, version, shiv_path)
   if version == "latest" or version == "main" then
     return version
   end
+
   if version:match("^%d") then
     return "v" .. resolve_numeric_version(tool, version, shiv_path)
   end
+
   return version
 end
 
@@ -528,7 +538,19 @@ end
 --- @param mise_bin string
 function install_shiv_dependencies(shiv_path, mise_bin)
   local cmd = require("cmd")
-  local install_cmd = shiv_mise_env() .. mise_bin .. " install -q -C " .. Shell.quote(shiv_path)
+
+  local runtime_config = Shell.quote(shiv_path .. "/mise.prod.toml")
+
+  local install_cmd = shiv_mise_env()
+    .. "MISE_GLOBAL_CONFIG_FILE="
+    .. runtime_config
+    .. " "
+    .. "MISE_SYSTEM_CONFIG_FILE="
+    .. runtime_config
+    .. " "
+    .. mise_bin
+    .. " install -q -C "
+    .. Shell.quote(shiv_path)
 
   local install_ok, install_err = pcall(cmd.exec, install_cmd)
   if install_ok then

@@ -1,17 +1,22 @@
 [settings]
 quiet = true
-task_output = "interleave"
 experimental = true
+
+[settings.task]
+output = "interleave"
+
+[settings.aqua]
+registries = ["https://github.com/KnickKnackLabs/bats-core"]
 
 [plugins]
 shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
 
 [tools]
-bats = "1.13.0"
-jq = "latest"
+"aqua:KnickKnackLabs/bats-core" = "1.14.0-kkl.3"
+jq = "1.8"
 
 # Lua
-lua = "5.4"
+lua = "5.5"
 lua-language-server = "3.18"
 stylua = "2.6"
 

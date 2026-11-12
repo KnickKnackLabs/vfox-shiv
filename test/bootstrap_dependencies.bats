@@ -1,22 +1,22 @@
 #!/usr/bin/env bats
 
 setup() {
-  REPO_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  HOOK="$REPO_DIR/hooks/backend_install.lua"
-  LIB_DIR="$REPO_DIR/lib"
+  REPO_DIR="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
+  HOOK="${REPO_DIR}/hooks/backend_install.lua"
+  LIB_DIR="${REPO_DIR}/lib"
   LUA_BIN="${VFOX_SHIV_TEST_LUA_BIN:-$(mise which lua)}"
 }
 
 run_dependency_lua() {
-  local snippet="$1"
+  local snippet="${1}"
   shift
 
-  LAST_EXEC_LOG="$BATS_TEST_TMPDIR/exec.log"
-  local harness="$BATS_TEST_TMPDIR/dependency-harness.lua"
-  : > "$LAST_EXEC_LOG"
+  LAST_EXEC_LOG="${BATS_TEST_TMPDIR}/exec.log"
+  local harness="${BATS_TEST_TMPDIR}/dependency-harness.lua"
+  : > "${LAST_EXEC_LOG}"
 
-  cat > "$harness" <<LUA
-package.path = "$LIB_DIR/?.lua;" .. package.path
+  cat > "${harness}" <<LUA
+package.path = "${LIB_DIR}/?.lua;" .. package.path
 PLUGIN = {}
 
 local log_path = assert(os.getenv("EXEC_LOG"), "EXEC_LOG missing")
@@ -41,8 +41,8 @@ package.loaded["cmd"] = {
   end,
 }
 
-dofile("$HOOK")
-$snippet
+dofile("${HOOK}")
+${snippet}
 LUA
 
   run env \
@@ -52,45 +52,45 @@ LUA
     -u INHERITED_FAIL \
     -u SCRUBBED_FAIL \
     "$@" \
-    EXEC_LOG="$LAST_EXEC_LOG" \
-    "$LUA_BIN" "$harness"
+    EXEC_LOG="${LAST_EXEC_LOG}" \
+    "${LUA_BIN}" "${harness}"
 }
 
 @test "dependency install uses inherited GitHub auth first" {
   run_dependency_lua 'install_shiv_dependencies("/tmp/shiv", "/bin/mise")' GITHUB_TOKEN=good
-  [ "$status" -eq 0 ]
+  [[ "${status}" -eq 0 ]]
 
   local line_count
-  line_count="$(wc -l < "$LAST_EXEC_LOG" | tr -d ' ')"
-  [ "$line_count" -eq 1 ]
-  ! grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN' "$LAST_EXEC_LOG"
-  grep -q "MISE_OVERRIDE_CONFIG_FILENAMES=mise.prod.toml /bin/mise install -q -C '/tmp/shiv'" "$LAST_EXEC_LOG"
+  line_count="$(wc -l < "${LAST_EXEC_LOG}" | tr -d ' ')"
+  [ "${line_count}" -eq 1 ]
+  ! grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN' "${LAST_EXEC_LOG}"
+  grep -Fq "/bin/mise install -q -C '/tmp/shiv'" "${LAST_EXEC_LOG}"
 }
 
 @test "dependency install retries with GitHub auth scrubbed after token failure" {
   run_dependency_lua 'install_shiv_dependencies("/tmp/shiv", "/bin/mise")' \
     GITHUB_TOKEN=bad \
     INHERITED_FAIL=1
-  [ "$status" -eq 0 ]
+  [[ "${status}" -eq 0 ]]
 
   local line_count
-  line_count="$(wc -l < "$LAST_EXEC_LOG" | tr -d ' ')"
-  [ "$line_count" -eq 2 ]
-  ! head -n 1 "$LAST_EXEC_LOG" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
-  tail -n 1 "$LAST_EXEC_LOG" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
+  line_count="$(wc -l < "${LAST_EXEC_LOG}" | tr -d ' ')"
+  [ "${line_count}" -eq 2 ]
+  ! head -n 1 "${LAST_EXEC_LOG}" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
+  tail -n 1 "${LAST_EXEC_LOG}" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
 }
 
 @test "dependency install retries when only MISE_GITHUB_TOKEN is set" {
   run_dependency_lua 'install_shiv_dependencies("/tmp/shiv", "/bin/mise")' \
     MISE_GITHUB_TOKEN=bad \
     INHERITED_FAIL=1
-  [ "$status" -eq 0 ]
+  [[ "${status}" -eq 0 ]]
 
   local line_count
-  line_count="$(wc -l < "$LAST_EXEC_LOG" | tr -d ' ')"
-  [ "$line_count" -eq 2 ]
-  ! head -n 1 "$LAST_EXEC_LOG" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
-  tail -n 1 "$LAST_EXEC_LOG" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
+  line_count="$(wc -l < "${LAST_EXEC_LOG}" | tr -d ' ')"
+  [ "${line_count}" -eq 2 ]
+  ! head -n 1 "${LAST_EXEC_LOG}" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
+  tail -n 1 "${LAST_EXEC_LOG}" | grep -q 'env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN'
 }
 
 @test "dependency install reports both failures when auth retry also fails" {
@@ -106,13 +106,13 @@ print(err)
     GITHUB_TOKEN=bad \
     INHERITED_FAIL=1 \
     SCRUBBED_FAIL=1
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Attempt with inherited GitHub token failed"* ]]
-  [[ "$output" == *"Retry without GitHub token env vars also failed"* ]]
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"Attempt with inherited GitHub token failed"* ]]
+  [[ "${output}" == *"Retry without GitHub token env vars also failed"* ]]
 
   local line_count
-  line_count="$(wc -l < "$LAST_EXEC_LOG" | tr -d ' ')"
-  [ "$line_count" -eq 2 ]
+  line_count="$(wc -l < "${LAST_EXEC_LOG}" | tr -d ' ')"
+  [ "${line_count}" -eq 2 ]
 }
 
 @test "dependency install without GitHub auth does not retry scrubbed" {
@@ -125,13 +125,13 @@ if ok then
 end
 print(err)
 ' INHERITED_FAIL=1
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Failed to install shiv dependencies (gum):"* ]]
-  [[ "$output" != *"Retry without GitHub token env vars"* ]]
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"Failed to install shiv dependencies (gum):"* ]]
+  [[ "${output}" != *"Retry without GitHub token env vars"* ]]
 
   local line_count
-  line_count="$(wc -l < "$LAST_EXEC_LOG" | tr -d ' ')"
-  [ "$line_count" -eq 1 ]
+  line_count="$(wc -l < "${LAST_EXEC_LOG}" | tr -d ' ')"
+  [ "${line_count}" -eq 1 ]
 }
 
 @test "with_lock acquires and releases around callback" {
@@ -140,12 +140,12 @@ with_lock("/tmp/vfox-shiv-install.lock", "VFOX_TEST_LOCK_MAX_ATTEMPTS", "test in
   print("inside lock")
 end)
 ' VFOX_TEST_LOCK_MAX_ATTEMPTS=1
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"inside lock"* ]]
-  grep -q "mkdir -p '/tmp'" "$LAST_EXEC_LOG"
-  grep -q "mkdir '/tmp/vfox-shiv-install.lock'" "$LAST_EXEC_LOG"
-  grep -q "echo \$PPID > '/tmp/vfox-shiv-install.lock/pid'" "$LAST_EXEC_LOG"
-  grep -q "rm -rf '/tmp/vfox-shiv-install.lock'" "$LAST_EXEC_LOG"
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"inside lock"* ]]
+  grep -q "mkdir -p '/tmp'" "${LAST_EXEC_LOG}"
+  grep -q "mkdir '/tmp/vfox-shiv-install.lock'" "${LAST_EXEC_LOG}"
+  grep -q "echo \$PPID > '/tmp/vfox-shiv-install.lock/pid'" "${LAST_EXEC_LOG}"
+  grep -q "rm -rf '/tmp/vfox-shiv-install.lock'" "${LAST_EXEC_LOG}"
 }
 
 @test "with_lock releases after callback failure" {
@@ -160,7 +160,7 @@ if ok then
 end
 print(err)
 ' VFOX_TEST_LOCK_MAX_ATTEMPTS=1
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"boom"* ]]
-  grep -q "rm -rf '/tmp/vfox-shiv-install.lock'" "$LAST_EXEC_LOG"
+  [[ "${status}" -eq 0 ]]
+  [[ "${output}" == *"boom"* ]]
+  grep -q "rm -rf '/tmp/vfox-shiv-install.lock'" "${LAST_EXEC_LOG}"
 }

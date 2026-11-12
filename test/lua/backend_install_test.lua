@@ -1,15 +1,40 @@
-test("dependency install retries with all GitHub token env vars scrubbed", function()
+test("dependency install targets only Shiv runtime dependencies", function()
   local commands = {}
-  local cmd_module = {
+
+  load_backend_install({
     exec = function(command)
       table.insert(commands, command)
+      return ""
+    end,
+  })
+
+  install_shiv_dependencies("/path/to/shiv", "/path/to/mise")
+
+  assert_equal(#commands, 1)
+
+  assert_equal(
+    commands[1],
+    "MISE_OVERRIDE_CONFIG_FILENAMES=mise.prod.toml "
+      .. "MISE_GLOBAL_CONFIG_FILE='/path/to/shiv/mise.prod.toml' "
+      .. "MISE_SYSTEM_CONFIG_FILE='/path/to/shiv/mise.prod.toml' "
+      .. "/path/to/mise install -q -C '/path/to/shiv'"
+  )
+end)
+
+test("dependency install retries with all GitHub token env vars scrubbed", function()
+  local commands = {}
+
+  load_backend_install({
+    exec = function(command)
+      table.insert(commands, command)
+
       if command:find("env %-u GITHUB_TOKEN %-u GH_TOKEN %-u MISE_GITHUB_TOKEN") then
         return "scrubbed ok"
       end
+
       error("inherited token rejected")
     end,
-  }
-  load_backend_install(cmd_module)
+  })
 
   with_env({
     GITHUB_TOKEN = false,
@@ -20,6 +45,7 @@ test("dependency install retries with all GitHub token env vars scrubbed", funct
   end)
 
   assert_equal(#commands, 2)
+
   assert_not_contains(commands[1], "env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN")
   assert_contains(commands[2], "env -u GITHUB_TOKEN -u GH_TOKEN -u MISE_GITHUB_TOKEN")
 end)

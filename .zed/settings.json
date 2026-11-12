@@ -1,7 +1,13 @@
 {
     "format_on_save": "on",
+    "use_on_type_format": false,
 
     "languages": {
+        "Shell Script": {
+            "tab_size": 4,
+            "hard_tabs": false,
+        },
+
         "Lua": {
             "tab_size": 2,
             "hard_tabs": false,
@@ -13,5 +19,9 @@
                 },
             },
         },
+    },
+
+    "file_types": {
+        "Shell Script": ["*.bats"],
     },
 }
