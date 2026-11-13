@@ -650,14 +650,13 @@ end
 function shiv_mise_env(shiv_path)
   local runtime_config = Shell.quote(shiv_path .. "/" .. "mise.prod.toml")
 
-  return ""
-    .. "MISE_OVERRIDE_CONFIG_FILENAMES=mise.prod.toml "
-    .. "MISE_GLOBAL_CONFIG_FILE="
-    .. runtime_config
-    .. " "
-    .. "MISE_SYSTEM_CONFIG_FILE="
-    .. runtime_config
-    .. " "
+  local env = ""
+  env = env .. "MISE_OVERRIDE_CONFIG_FILENAMES=mise.prod.toml" .. " "
+  env = env .. "MISE_GLOBAL_CONFIG_FILE=" .. runtime_config .. " "
+  env = env .. "MISE_SYSTEM_CONFIG_FILE=" .. runtime_config .. " "
+  env = env .. "MISE_CONFIG_DIR=" .. Shell.quote(shiv_path) .. " "
+
+  return env
 end
 
 --- Get the path to the plugin's shiv clone.

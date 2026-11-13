@@ -17,6 +17,7 @@ test("dependency install targets only Shiv runtime dependencies", function()
     "MISE_OVERRIDE_CONFIG_FILENAMES=mise.prod.toml "
       .. "MISE_GLOBAL_CONFIG_FILE='/path/to/shiv/mise.prod.toml' "
       .. "MISE_SYSTEM_CONFIG_FILE='/path/to/shiv/mise.prod.toml' "
+      .. "MISE_CONFIG_DIR='/path/to/shiv' "
       .. "/path/to/mise install -q -C '/path/to/shiv'"
   )
 end)
@@ -183,54 +184,83 @@ test("with_lock allows nested callbacks from same owner", function()
   assert_contains(log, "rm -rf '/tmp/vfox-shiv-install.lock'")
 end)
 
-test("BackendInstall lets delegated dependency installs reenter lock", function()
+test("a package can install its dependencies without blocking itself", function()
   local nested_owner
+
   local saw_delegated_install = false
   local commands = {}
+
   local cmd_module = {
     exec = function(command)
       table.insert(commands, command)
+
       if command == "command -v mise" then
         return "/bin/mise\n"
       end
+
       if command:find("^git %-C '/tmp/shiv' describe") then
         return "v0.6.0\n"
       end
+
       if command:find("^printf '%%s:%%s:%%s'") then
         return "owner-token\n"
       end
+
       if command:find("^cat '/tmp/shiv%.install%.lock/owner'") then
         return "owner-token\n"
       end
+
       if command:find("run %-%-skip%-tools %-q install 'emails@v0%.6%.2'") then
         saw_delegated_install = true
         assert_contains(command, "VFOX_SHIV_INSTALL_LOCK_OWNER='owner-token'")
         assert_contains(command, "MISE_JOBS=1")
+
+        -- Use Shiv's runtime config instead of the user's global configuration
+        assert_contains(command, "MISE_CONFIG_DIR='/tmp/shiv'")
+        assert_contains(command, "MISE_GLOBAL_CONFIG_FILE='/tmp/shiv/mise.prod.toml'")
+        assert_contains(command, "MISE_SYSTEM_CONFIG_FILE='/tmp/shiv/mise.prod.toml'")
+
         with_env({ VFOX_SHIV_INSTALL_LOCK_OWNER = "owner-token" }, function()
           with_lock("/tmp/shiv.install.lock", "VFOX_TEST_LOCK_MAX_ATTEMPTS", "test install", function(owner)
             nested_owner = owner
           end)
         end)
+
         return ""
       end
+
       return ""
     end,
   }
+
   local previous_file = package.loaded["file"]
+
   package.loaded["file"] = {
     exists = function(path)
       return path == "/tmp/shiv/.git/HEAD" or path == "/tmp/shiv/.vfox-shiv-deps-ready"
     end,
   }
+
   load_backend_install(cmd_module)
 
-  with_env({ VFOX_SHIV_PATH = "/tmp/shiv", VFOX_SHIV_INSTALL_LOCK_OWNER = false }, function()
-    PLUGIN:BackendInstall({ tool = "emails", version = "0.6.2", install_path = "/tmp/install" })
-  end)
+  local function install_fn()
+    PLUGIN:BackendInstall({
+      tool = "emails",
+      version = "0.6.2",
+      install_path = "/tmp/install",
+    })
+  end
+
+  with_env({
+    VFOX_SHIV_PATH = "/tmp/shiv",
+    VFOX_SHIV_INSTALL_LOCK_OWNER = false,
+  }, install_fn)
+
   package.loaded["file"] = previous_file
 
   assert_truthy(saw_delegated_install)
   assert_equal(nested_owner, "owner-token")
+
   local log = table.concat(commands, "\n")
   assert_contains(log, "printf '%s' 'owner-token' > '/tmp/shiv.install.lock/owner'")
   assert_contains(log, "cat '/tmp/shiv.install.lock/owner' 2>/dev/null")
@@ -290,9 +320,11 @@ test("numeric minor install ref fails clearly when tag fetch fails", function()
       if command:find("/tags", 1, true) then
         error("rate limited")
       end
+
       if command:find("ls '/tmp/sources'/*.json", 1, true) then
         return "/tmp/sources/test.json\n"
       end
+
       return ""
     end,
   }
@@ -302,12 +334,15 @@ test("numeric minor install ref fails clearly when tag fetch fails", function()
       if path == "/tmp/sources/test.json" then
         return '{"moving":"Acme/moving"}'
       end
+
       return "{}"
     end,
+
     exists = function()
       return false
     end,
   }
+
   load_backend_install(cmd_module)
 
   local ok, err = pcall(function()
@@ -315,6 +350,7 @@ test("numeric minor install ref fails clearly when tag fetch fails", function()
       resolve_install_ref("moving", "0.9", "/tmp/shiv")
     end)
   end)
+
   package.loaded["file"] = previous_file
 
   assert_falsey(ok)
