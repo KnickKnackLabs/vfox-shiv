@@ -72,8 +72,9 @@ function PLUGIN:BackendInstall(ctx)
       local mise_bin = find_mise()
       local quoted_mise = Shell.quote(mise_bin)
       local quoted_shiv_path = Shell.quote(shiv_path)
+
       local install_cmd = env_prefix
-        .. shiv_mise_env()
+        .. shiv_mise_env(shiv_path)
         .. install_lock_env(lock_owner)
         .. quoted_mise
         .. " -C "
@@ -514,7 +515,7 @@ function ensure_shiv()
 
   -- Trust the mise config so shiv's tasks can run
   local mise_bin = find_mise()
-  pcall(cmd.exec, shiv_mise_env() .. mise_bin .. " trust -q -C '" .. shiv_path .. "'")
+  pcall(cmd.exec, shiv_mise_env(shiv_path) .. mise_bin .. " trust -q -C '" .. shiv_path .. "'")
 
   local deps_ok, deps_err = pcall(install_shiv_dependencies, shiv_path, mise_bin)
   if deps_ok then
@@ -539,18 +540,7 @@ end
 function install_shiv_dependencies(shiv_path, mise_bin)
   local cmd = require("cmd")
 
-  local runtime_config = Shell.quote(shiv_path .. "/mise.prod.toml")
-
-  local install_cmd = shiv_mise_env()
-    .. "MISE_GLOBAL_CONFIG_FILE="
-    .. runtime_config
-    .. " "
-    .. "MISE_SYSTEM_CONFIG_FILE="
-    .. runtime_config
-    .. " "
-    .. mise_bin
-    .. " install -q -C "
-    .. Shell.quote(shiv_path)
+  local install_cmd = shiv_mise_env(shiv_path) .. mise_bin .. " " .. "install -q -C " .. Shell.quote(shiv_path)
 
   local install_ok, install_err = pcall(cmd.exec, install_cmd)
   if install_ok then
@@ -653,13 +643,21 @@ function find_mise()
   error("mise not found on PATH or in common locations")
 end
 
---- Build an env prefix for nested mise calls into the shiv clone.
---- Points mise at mise.prod.toml (runtime-only dependencies) so dev/test
---- tools like bats aren't installed during bootstrap. This also prevents
---- the parent's MISE_OVERRIDE_CONFIG_FILENAMES from leaking in.
+--- Scope internal commands to Shiv's runtime configuration.
+--- Package installs clear the filename override to load their own mise.toml.
+--- @param shiv_path string
 --- @return string
-function shiv_mise_env()
-  return "MISE_OVERRIDE_CONFIG_FILENAMES=mise.prod.toml "
+function shiv_mise_env(shiv_path)
+  local runtime_config = Shell.quote(shiv_path .. "/" .. "mise.prod.toml")
+
+  return ""
+    .. "MISE_OVERRIDE_CONFIG_FILENAMES=mise.prod.toml "
+    .. "MISE_GLOBAL_CONFIG_FILE="
+    .. runtime_config
+    .. " "
+    .. "MISE_SYSTEM_CONFIG_FILE="
+    .. runtime_config
+    .. " "
 end
 
 --- Get the path to the plugin's shiv clone.
